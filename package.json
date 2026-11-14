@@ -1,8 +1,8 @@
 {
   "name": "tasks-api",
   "version": "0.0.1",
-  "description": "",
-  "author": "",
+  "description": "REST API for managing tasks with NestJS, Prisma and PostgreSQL",
+  "author": "ItsJhonAlex",
   "private": true,
   "license": "UNLICENSED",
   "type": "module",
@@ -15,9 +15,7 @@
   },
   "scripts": {
     "build": "nest build",
-    "deploy": "nest deploy",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
-    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
