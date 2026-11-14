@@ -292,7 +292,8 @@ Usé IA durante todo el proyecto como apoyo, revisando y probando cada cambio an
 
 ## Tiempo invertido
 
-Unas 4 horas y media en total, de 10:45 a 15:15 (hora de La Habana, UTC-5), incluyendo una pausa por el límite de uso de la IA:
+Unas **2 horas y media** en total:
 
-- unas 3 horas de implementación y tests;
-- 1 hora y media de revisión, pulido y documentación.
+- ~1 h 15 min: estructura del proyecto, modelo, migraciones y CRUD con filtros y paginación.
+- ~45 min: tests unitarios y e2e, CI y Swagger.
+- ~30 min: revisión final, correcciones de validación (`null` y fechas estrictas) y documentación.
