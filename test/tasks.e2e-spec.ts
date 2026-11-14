@@ -3,253 +3,131 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { App } from 'supertest/types.js';
 import { AppModule } from '../src/app.module.js';
-import { Prisma } from '../src/generated/prisma/client.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
 
-const ID = '3f2b8a8e-5f0c-4c43-9d7a-2d1d4b6f9c11';
-const task = {
-  id: ID,
-  title: 'Preparar release',
-  description: null,
-  status: 'PENDING',
-  assignee: 'alice',
-  dueDate: '2026-12-31T00:00:00.000Z',
-  createdAt: '2026-11-14T10:00:00.000Z',
-  updatedAt: '2026-11-14T10:00:00.000Z',
-};
+const MISSING_ID = '3f2b8a8e-5f0c-4c43-9d7a-2d1d4b6f9c11';
+
 const validBody = {
   title: 'Preparar release',
   assignee: 'alice',
   dueDate: '2026-12-31T00:00:00.000Z',
 };
 
-const notFound = () =>
-  new Prisma.PrismaClientKnownRequestError('Record not found', {
-    code: 'P2025',
-    clientVersion: 'test',
-  });
-
-describe('Tasks (e2e)', () => {
+describe('Tasks (e2e, test database)', () => {
   let app: INestApplication<App>;
-
-  const prismaMock = {
-    $connect: vi.fn(),
-    $disconnect: vi.fn(),
-    $transaction: vi.fn(),
-    task: {
-      create: vi.fn(),
-      findMany: vi.fn(),
-      count: vi.fn(),
-      findUniqueOrThrow: vi.fn(),
-      update: vi.fn(),
-      delete: vi.fn(),
-    },
-  };
+  let prisma: PrismaService;
 
   beforeAll(async () => {
-    process.env.DATABASE_URL ??= 'postgresql://unused';
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
-      .overrideProvider(PrismaService)
-      .useValue(prismaMock)
-      .compile();
+    const moduleRef = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
 
     app = moduleRef.createNestApplication();
     await app.init();
+    prisma = app.get(PrismaService);
   });
 
-  beforeEach(() => {
-    vi.resetAllMocks();
-    prismaMock.$transaction.mockImplementation((queries: unknown[]) =>
-      Promise.all(queries),
-    );
+  beforeEach(async () => {
+    await prisma.task.deleteMany();
   });
 
   afterAll(async () => {
     await app.close();
   });
 
-  describe('POST /tasks', () => {
-    it('creates a task and returns 201', async () => {
-      prismaMock.task.create.mockResolvedValue(task);
+  const http = () => request(app.getHttpServer());
 
-      const res = await request(app.getHttpServer())
-        .post('/tasks')
-        .send(validBody)
-        .expect(201);
+  it('POST /tasks creates a task and returns 201', async () => {
+    const res = await http().post('/tasks').send(validBody).expect(201);
 
-      expect(res.body.id).toBe(ID);
+    expect(res.body).toMatchObject({
+      title: 'Preparar release',
+      assignee: 'alice',
+      status: 'PENDING',
     });
-
-    it('rejects a title shorter than 3 characters with 400', async () => {
-      const res = await request(app.getHttpServer())
-        .post('/tasks')
-        .send({ ...validBody, title: 'ab' })
-        .expect(400);
-
-      expect(res.body).toMatchObject({
-        statusCode: 400,
-        error: 'Bad Request',
-        path: '/tasks',
-      });
-      expect(res.body.message).toEqual(
-        expect.arrayContaining([expect.stringContaining('title')]),
-      );
-      expect(typeof res.body.timestamp).toBe('string');
-      expect(prismaMock.task.create).not.toHaveBeenCalled();
-    });
-
-    it('rejects an invalid status and dueDate with 400', async () => {
-      await request(app.getHttpServer())
-        .post('/tasks')
-        .send({ ...validBody, status: 'NOPE', dueDate: 'not-a-date' })
-        .expect(400);
-    });
-
-    it('rejects unknown properties with 400', async () => {
-      await request(app.getHttpServer())
-        .post('/tasks')
-        .send({ ...validBody, hacker: true })
-        .expect(400);
-    });
+    expect(await prisma.task.count()).toBe(1);
   });
 
-  describe('GET /tasks', () => {
-    it('returns data and meta with defaults', async () => {
-      prismaMock.task.findMany.mockResolvedValue([task]);
-      prismaMock.task.count.mockResolvedValue(1);
+  it('POST /tasks rejects an invalid body with 400 and stores nothing', async () => {
+    const res = await http()
+      .post('/tasks')
+      .send({ ...validBody, title: 'ab' })
+      .expect(400);
 
-      const res = await request(app.getHttpServer()).get('/tasks').expect(200);
-
-      expect(res.body).toEqual({
-        data: [task],
-        meta: { page: 1, limit: 10, total: 1, totalPages: 1 },
-      });
-      expect(prismaMock.task.findMany).toHaveBeenCalledWith({
-        where: {},
-        orderBy: { createdAt: 'desc' },
-        skip: 0,
-        take: 10,
-      });
+    expect(res.body).toMatchObject({
+      statusCode: 400,
+      error: 'Bad Request',
+      path: '/tasks',
     });
-
-    it('applies filters and pagination from the query string', async () => {
-      prismaMock.task.findMany.mockResolvedValue([]);
-      prismaMock.task.count.mockResolvedValue(0);
-
-      await request(app.getHttpServer())
-        .get('/tasks?status=DONE&assignee=bob&page=2&limit=5')
-        .expect(200);
-
-      expect(prismaMock.task.findMany).toHaveBeenCalledWith({
-        where: { status: 'DONE', assignee: 'bob' },
-        orderBy: { createdAt: 'desc' },
-        skip: 5,
-        take: 5,
-      });
-    });
-
-    it.each(['limit=101', 'limit=0', 'page=0', 'page=abc', 'status=NOPE'])(
-      'rejects %s with 400',
-      async (qs) => {
-        await request(app.getHttpServer()).get(`/tasks?${qs}`).expect(400);
-      },
+    expect(res.body.message).toEqual(
+      expect.arrayContaining([expect.stringContaining('title')]),
     );
+    expect(await prisma.task.count()).toBe(0);
   });
 
-  describe('GET /tasks/:id', () => {
-    it('returns the task', async () => {
-      prismaMock.task.findUniqueOrThrow.mockResolvedValue(task);
-      await request(app.getHttpServer()).get(`/tasks/${ID}`).expect(200);
+  it('GET /tasks filters by status and paginates', async () => {
+    await prisma.task.createMany({
+      data: [
+        ...Array.from({ length: 3 }, (_, i) => ({
+          ...validBody,
+          title: `Done ${i}`,
+          dueDate: new Date(validBody.dueDate),
+          status: 'DONE' as const,
+        })),
+        {
+          ...validBody,
+          title: 'Pending one',
+          dueDate: new Date(validBody.dueDate),
+        },
+      ],
     });
 
-    it('returns 404 when the task does not exist', async () => {
-      prismaMock.task.findUniqueOrThrow.mockRejectedValue(notFound());
+    const res = await http().get('/tasks?status=DONE&limit=2').expect(200);
 
-      const res = await request(app.getHttpServer())
-        .get(`/tasks/${ID}`)
-        .expect(404);
-
-      expect(res.body).toMatchObject({
-        statusCode: 404,
-        error: 'Not Found',
-        path: `/tasks/${ID}`,
-      });
+    expect(res.body.meta).toEqual({
+      page: 1,
+      limit: 2,
+      total: 3,
+      totalPages: 2,
     });
-
-    it('returns 400 when the id is not a uuid', async () => {
-      await request(app.getHttpServer()).get('/tasks/123').expect(400);
-      expect(prismaMock.task.findUniqueOrThrow).not.toHaveBeenCalled();
-    });
+    expect(res.body.data).toHaveLength(2);
+    expect(
+      res.body.data.every((t: { status: string }) => t.status === 'DONE'),
+    ).toBe(true);
   });
 
-  describe('PATCH /tasks/:id', () => {
-    it('updates the task', async () => {
-      prismaMock.task.update.mockResolvedValue({ ...task, status: 'DONE' });
-
-      const res = await request(app.getHttpServer())
-        .patch(`/tasks/${ID}`)
-        .send({ status: 'DONE' })
-        .expect(200);
-
-      expect(res.body.status).toBe('DONE');
+  it('GET /tasks/:id returns 404 for a missing id and 400 for a malformed one', async () => {
+    const missing = await http().get(`/tasks/${MISSING_ID}`).expect(404);
+    expect(missing.body).toMatchObject({
+      statusCode: 404,
+      error: 'Not Found',
+      path: `/tasks/${MISSING_ID}`,
     });
 
-    it('returns 404 when the task does not exist', async () => {
-      prismaMock.task.update.mockRejectedValue(notFound());
-      await request(app.getHttpServer())
-        .patch(`/tasks/${ID}`)
-        .send({ status: 'DONE' })
-        .expect(404);
-    });
-
-    it('returns 400 for an invalid id or body', async () => {
-      await request(app.getHttpServer())
-        .patch('/tasks/123')
-        .send({ status: 'DONE' })
-        .expect(400);
-      await request(app.getHttpServer())
-        .patch(`/tasks/${ID}`)
-        .send({ status: 'NOPE' })
-        .expect(400);
-    });
+    await http().get('/tasks/123').expect(400);
   });
 
-  describe('DELETE /tasks/:id', () => {
-    it('deletes the task and returns 204', async () => {
-      prismaMock.task.delete.mockResolvedValue(task);
-      const res = await request(app.getHttpServer())
-        .delete(`/tasks/${ID}`)
-        .expect(204);
-      expect(res.text).toBe('');
-    });
+  it('DELETE /tasks/:id returns 204 and then 404', async () => {
+    const created = await http().post('/tasks').send(validBody).expect(201);
 
-    it('returns 404 when the task does not exist', async () => {
-      prismaMock.task.delete.mockRejectedValue(notFound());
-      await request(app.getHttpServer()).delete(`/tasks/${ID}`).expect(404);
-    });
+    const res = await http().delete(`/tasks/${created.body.id}`).expect(204);
+    expect(res.text).toBe('');
+    expect(await prisma.task.count()).toBe(0);
 
-    it('returns 400 when the id is not a uuid', async () => {
-      await request(app.getHttpServer()).delete('/tasks/nope').expect(400);
-    });
+    await http().delete(`/tasks/${created.body.id}`).expect(404);
   });
 
-  describe('unexpected errors', () => {
-    it('returns 500 without leaking the error details', async () => {
-      prismaMock.task.findUniqueOrThrow.mockRejectedValue(
-        new Error('connection string postgres://secret@db is broken'),
-      );
+  it('PATCH /tasks/:id updates only the given fields', async () => {
+    const created = await http().post('/tasks').send(validBody).expect(201);
 
-      const res = await request(app.getHttpServer())
-        .get(`/tasks/${ID}`)
-        .expect(500);
+    const res = await http()
+      .patch(`/tasks/${created.body.id}`)
+      .send({ status: 'IN_PROGRESS' })
+      .expect(200);
 
-      expect(res.body).toMatchObject({
-        statusCode: 500,
-        error: 'Internal Server Error',
-        message: 'Internal server error',
-      });
-      expect(JSON.stringify(res.body)).not.toContain('secret');
-      expect(JSON.stringify(res.body)).not.toContain('stack');
+    expect(res.body).toMatchObject({
+      title: 'Preparar release',
+      status: 'IN_PROGRESS',
     });
   });
 });

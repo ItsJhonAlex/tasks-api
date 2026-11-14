@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, Task } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CreateTaskDto } from './dto/create-task.dto.js';
@@ -51,24 +51,45 @@ export class TasksService {
     };
   }
 
-  findOne(id: string): Promise<Task> {
-    return this.prisma.task.findUniqueOrThrow({ where: { id } });
+  async findOne(id: string): Promise<Task> {
+    const task = await this.prisma.task.findUnique({ where: { id } });
+    if (!task) throw this.notFound(id);
+    return task;
   }
 
-  update(id: string, dto: UpdateTaskDto): Promise<Task> {
-    return this.prisma.task.update({
-      where: { id },
-      data: {
-        title: dto.title,
-        description: dto.description,
-        status: dto.status,
-        assignee: dto.assignee,
-        dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
-      },
-    });
+  async update(id: string, dto: UpdateTaskDto): Promise<Task> {
+    try {
+      return await this.prisma.task.update({
+        where: { id },
+        data: {
+          title: dto.title,
+          description: dto.description,
+          status: dto.status,
+          assignee: dto.assignee,
+          dueDate: dto.dueDate ? new Date(dto.dueDate) : undefined,
+        },
+      });
+    } catch (error) {
+      throw this.mapNotFound(error, id);
+    }
   }
 
   async remove(id: string): Promise<void> {
-    await this.prisma.task.delete({ where: { id } });
+    try {
+      await this.prisma.task.delete({ where: { id } });
+    } catch (error) {
+      throw this.mapNotFound(error, id);
+    }
+  }
+
+  private notFound(id: string): NotFoundException {
+    return new NotFoundException(`Task ${id} not found`);
+  }
+
+  private mapNotFound(error: unknown, id: string): unknown {
+    const isRecordNotFound =
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2025';
+    return isRecordNotFound ? this.notFound(id) : error;
   }
 }
