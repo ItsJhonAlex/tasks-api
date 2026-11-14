@@ -117,6 +117,13 @@ describe('Tasks (e2e, test database)', () => {
     await http().delete(`/tasks/${created.body.id}`).expect(404);
   });
 
+  it('GET /health reports the database as up', async () => {
+    const res = await http().get('/health').expect(200);
+
+    expect(res.body.status).toBe('ok');
+    expect(res.body.info.database.status).toBe('up');
+  });
+
   it('PATCH /tasks/:id updates only the given fields', async () => {
     const created = await http().post('/tasks').send(validBody).expect(201);
 
