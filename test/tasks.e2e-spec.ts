@@ -96,6 +96,47 @@ describe('Tasks (e2e, test database)', () => {
     ).toBe(true);
   });
 
+  it('GET /tasks filters by assignee', async () => {
+    await prisma.task.createMany({
+      data: [
+        {
+          ...validBody,
+          title: 'Alice task',
+          assignee: 'alice',
+          dueDate: new Date(validBody.dueDate),
+        },
+        {
+          ...validBody,
+          title: 'Bob task',
+          assignee: 'bob',
+          dueDate: new Date(validBody.dueDate),
+        },
+      ],
+    });
+
+    const res = await http().get('/tasks?assignee=alice').expect(200);
+
+    expect(res.body.meta.total).toBe(1);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0]).toMatchObject({
+      title: 'Alice task',
+      assignee: 'alice',
+    });
+  });
+
+  it('GET /tasks rejects an invalid status with 400', async () => {
+    const res = await http().get('/tasks?status=FOO').expect(400);
+
+    expect(res.body).toMatchObject({
+      statusCode: 400,
+      error: 'Bad Request',
+      path: '/tasks?status=FOO',
+    });
+    expect(res.body.message).toEqual(
+      expect.arrayContaining([expect.stringContaining('status')]),
+    );
+  });
+
   it('GET /tasks/:id returns 404 for a missing id and 400 for a malformed one', async () => {
     const missing = await http().get(`/tasks/${MISSING_ID}`).expect(404);
     expect(missing.body).toMatchObject({
