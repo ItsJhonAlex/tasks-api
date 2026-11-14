@@ -178,4 +178,31 @@ describe('Tasks (e2e, test database)', () => {
       status: 'IN_PROGRESS',
     });
   });
+
+  it('PATCH /tasks/:id rejects null title with 400', async () => {
+    const created = await http().post('/tasks').send(validBody).expect(201);
+
+    const res = await http()
+      .patch(`/tasks/${created.body.id}`)
+      .send({ title: null })
+      .expect(400);
+
+    expect(res.body.statusCode).toBe(400);
+    expect(res.body.message).toEqual(
+      expect.arrayContaining([expect.stringContaining('title')]),
+    );
+  });
+
+  it('POST /tasks rejects null status with 400', async () => {
+    const res = await http()
+      .post('/tasks')
+      .send({ ...validBody, status: null })
+      .expect(400);
+
+    expect(res.body.statusCode).toBe(400);
+    expect(res.body.message).toEqual(
+      expect.arrayContaining([expect.stringContaining('status')]),
+    );
+    expect(await prisma.task.count()).toBe(0);
+  });
 });

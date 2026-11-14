@@ -8,6 +8,7 @@ import {
   IsString,
   Length,
   MaxLength,
+  ValidateIf,
 } from 'class-validator';
 import { TaskStatus } from '../../generated/prisma/enums.js';
 
@@ -24,7 +25,7 @@ export class CreateTaskDto {
   description?: string;
 
   @ApiPropertyOptional({ enum: TaskStatus, default: TaskStatus.PENDING })
-  @IsOptional()
+  @ValidateIf((_, v) => v !== undefined)
   @IsEnum(TaskStatus)
   status?: TaskStatus;
 
