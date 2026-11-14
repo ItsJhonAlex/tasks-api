@@ -205,4 +205,17 @@ describe('Tasks (e2e, test database)', () => {
     );
     expect(await prisma.task.count()).toBe(0);
   });
+
+  it('POST /tasks rejects an invalid calendar dueDate with 400', async () => {
+    const res = await http()
+      .post('/tasks')
+      .send({ ...validBody, dueDate: '2026-02-30' })
+      .expect(400);
+
+    expect(res.body.statusCode).toBe(400);
+    expect(res.body.message).toEqual(
+      expect.arrayContaining([expect.stringContaining('dueDate')]),
+    );
+    expect(await prisma.task.count()).toBe(0);
+  });
 });
