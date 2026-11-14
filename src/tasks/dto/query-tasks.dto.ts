@@ -1,6 +1,14 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsEnum, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
 import { TaskStatus } from '../../generated/prisma/enums.js';
 
 export class QueryTasksDto {
@@ -9,9 +17,10 @@ export class QueryTasksDto {
   @IsEnum(TaskStatus)
   status?: TaskStatus;
 
-  @ApiPropertyOptional({ example: 'alice' })
+  @ApiPropertyOptional({ maxLength: 100, example: 'alice' })
   @IsOptional()
   @IsString()
+  @MaxLength(100)
   assignee?: string;
 
   @ApiPropertyOptional({ minimum: 1, default: 1 })

@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import {
   IsDateString,
   IsEnum,
@@ -27,9 +28,13 @@ export class CreateTaskDto {
   @IsEnum(TaskStatus)
   status?: TaskStatus;
 
-  @ApiProperty({ example: 'alice' })
+  @ApiProperty({ maxLength: 100, example: 'alice' })
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
   @IsString()
   @IsNotEmpty()
+  @MaxLength(100)
   assignee: string;
 
   @ApiProperty({ example: '2026-12-31T23:59:59.000Z' })
